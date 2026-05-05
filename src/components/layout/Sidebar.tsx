@@ -105,7 +105,7 @@ export function Sidebar() {
             A
           </div>
           <div className="min-w-0 text-left">
-            <p className="text-sm font-medium text-text-primary">Andrey</p>
+            <p className="text-sm font-medium text-text-primary">Nikita</p>
             <p className="text-xs text-text-muted">Бесплатный план</p>
           </div>
         </button>
