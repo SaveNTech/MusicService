@@ -1,9 +1,11 @@
 import { useParams } from 'react-router-dom'
-import { Play, Pause, Heart, MoreHorizontal, Clock } from 'lucide-react'
-import { GradientCover } from '@/components/ui/GradientCover'
+import { Play, Pause, Clock } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { Cover } from '@/components/ui/Cover'
 import { TrackRow } from '@/components/ui/TrackRow'
 import { usePlayerStore } from '@/store/playerStore'
-import { getPlaylistById, getTrackById, formatDuration } from '@/data/mockData'
+import { playlistsApi } from '@/api'
+import { formatDuration } from '@/utils'
 
 export function PlaylistPage() {
   const { id } = useParams<{ id: string }>()
@@ -12,88 +14,95 @@ export function PlaylistPage() {
   const isPlaying = usePlayerStore(s => s.isPlaying)
   const togglePlay = usePlayerStore(s => s.togglePlay)
 
-  const playlist = id ? getPlaylistById(id) : null
-  if (!playlist) return (
-    <div className="flex items-center justify-center h-full text-text-secondary">
-      Плейлист не найден
+  const playlistId = parseInt(id ?? '0')
+
+  const { data: playlist, isLoading } = useQuery({
+    queryKey: ['playlist', playlistId],
+    queryFn: () => playlistsApi.get(playlistId).then(r => r.data),
+    enabled: !!playlistId,
+  })
+
+  if (isLoading) return (
+    <div className="flex items-center justify-center h-48">
+      <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
     </div>
   )
+  if (!playlist) return (
+    <div className="flex items-center justify-center h-48 text-text-secondary">Плейлист не найден</div>
+  )
 
-  const playlistTracks = playlist.trackIds
-    .map(id => getTrackById(id))
-    .filter(Boolean) as NonNullable<ReturnType<typeof getTrackById>>[]
-
-  const isListPlaying = playlistTracks.some(t => t.id === currentTrack?.id) && isPlaying
-  const totalDuration = playlistTracks.reduce((s, t) => s + t.duration, 0)
+  const tracks = playlist.tracks ?? []
+  const isListPlaying = tracks.some(t => t.id === currentTrack?.id) && isPlaying
+  const totalDuration = tracks.reduce((s, t) => s + t.duration, 0)
 
   function handlePlay() {
-    if (isListPlaying) {
-      togglePlay()
-    } else if (playlistTracks.length > 0) {
-      playTrack(playlistTracks[0], playlistTracks)
-    }
+    if (isListPlaying) togglePlay()
+    else if (tracks.length > 0) playTrack(tracks[0], tracks)
   }
 
   return (
     <div className="animate-fade-in-up">
-      {/* Header */}
       <div
-        className="relative px-8 pt-10 pb-8"
-        style={{ background: `linear-gradient(160deg, ${playlist.gradient[0]}33, ${playlist.gradient[1]}22, transparent 60%)` }}
+        className="relative px-8 pt-8 pb-7"
+        style={{ background: `linear-gradient(160deg, ${playlist.color}30, ${playlist.color}10, transparent 65%)` }}
       >
-        <div className="flex items-end gap-7">
-          <div className="flex-shrink-0 shadow-2xl rounded-2xl overflow-hidden w-48 h-48"
-            style={{ boxShadow: `0 24px 60px ${playlist.gradient[0]}50` }}>
-            <GradientCover gradient={playlist.gradient} className="w-full h-full" rounded="lg" />
-          </div>
-          <div className="flex-1 min-w-0 pb-2">
+        <div className="flex items-end gap-6">
+          <Cover
+            src={playlist.cover_url}
+            color={playlist.color}
+            className="w-44 h-44 flex-shrink-0 shadow-2xl"
+            rounded="md"
+            alt={playlist.title}
+          />
+          <div className="flex-1 min-w-0 pb-1">
             <p className="text-xs font-semibold uppercase tracking-widest text-text-secondary mb-1">Плейлист</p>
-            <h1 className="text-4xl lg:text-5xl font-extrabold text-white leading-tight mb-2">{playlist.title}</h1>
-            <p className="text-base text-text-secondary">{playlist.description}</p>
-            <p className="text-sm text-text-muted mt-2">
-              {playlist.createdBy} · {playlistTracks.length} треков · {formatDuration(totalDuration)}
+            <h1 className="text-3xl lg:text-4xl font-extrabold text-white leading-tight mb-2">
+              {playlist.title}
+            </h1>
+            {playlist.description && (
+              <p className="text-sm text-text-secondary">{playlist.description}</p>
+            )}
+            <p className="text-xs text-text-muted mt-1.5">
+              {tracks.length} треков{totalDuration > 0 && ` · ${formatDuration(totalDuration)}`}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 mt-6">
+        <div className="flex items-center gap-3 mt-5">
           <button
             onClick={handlePlay}
-            className="w-14 h-14 rounded-full flex items-center justify-center shadow-xl transition-all hover:scale-105 glow-accent"
-            style={{ background: 'linear-gradient(135deg, #7c3aed, #06b6d4)' }}
+            disabled={tracks.length === 0}
+            className="w-11 h-11 rounded-full bg-accent hover:bg-accent/90 flex items-center justify-center shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-40"
           >
             {isListPlaying
-              ? <Pause className="w-6 h-6 text-white fill-white" />
-              : <Play className="w-6 h-6 text-white fill-white ml-0.5" />
+              ? <Pause className="w-5 h-5 text-white fill-white" />
+              : <Play className="w-5 h-5 text-white fill-white ml-0.5" />
             }
-          </button>
-          <button className="w-10 h-10 rounded-full border border-white/20 flex items-center justify-center text-text-secondary hover:text-white hover:border-white/40 transition-all">
-            <Heart className="w-4 h-4" />
-          </button>
-          <button className="w-10 h-10 rounded-full border border-white/20 flex items-center justify-center text-text-secondary hover:text-white hover:border-white/40 transition-all">
-            <MoreHorizontal className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* Track list */}
       <div className="px-8 pb-8">
-        <div className="flex items-center gap-3 px-3 pb-3 border-b border-white/5 mb-2">
-          <div className="w-6 text-center text-xs text-text-muted">#</div>
-          <div className="flex-1 text-xs font-semibold text-text-muted uppercase tracking-wider">Название</div>
-          <div className="hidden md:block text-xs font-semibold text-text-muted uppercase tracking-wider w-32 text-right">Альбом</div>
-          <div className="w-8" />
-          <div className="w-8 text-right flex-shrink-0">
-            <Clock className="w-3.5 h-3.5 text-text-muted ml-auto" />
-          </div>
-          <div className="w-8" />
-        </div>
-
-        <div className="space-y-0.5">
-          {playlistTracks.map((track, i) => (
-            <TrackRow key={track.id} track={track} index={i} queue={playlistTracks} showAlbum />
-          ))}
-        </div>
+        {tracks.length > 0 ? (
+          <>
+            <div className="flex items-center gap-3 px-3 pb-2 border-b border-border mb-1">
+              <div className="w-6 text-center text-xs text-text-muted">#</div>
+              <div className="flex-1 text-xs font-semibold text-text-muted uppercase tracking-wider">Название</div>
+              <div className="w-8" />
+              <div className="w-8 text-right flex-shrink-0">
+                <Clock className="w-3.5 h-3.5 text-text-muted ml-auto" />
+              </div>
+              <div className="w-8" />
+            </div>
+            <div className="space-y-0.5">
+              {tracks.map((track, i) => (
+                <TrackRow key={track.id} track={track} index={i} queue={tracks} showCover />
+              ))}
+            </div>
+          </>
+        ) : (
+          <p className="text-text-muted text-sm text-center py-10">Плейлист пуст</p>
+        )}
       </div>
     </div>
   )

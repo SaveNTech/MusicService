@@ -1,43 +1,56 @@
 export interface Artist {
-  id: string
+  id: number
   name: string
-  bio: string
-  gradient: [string, string]
-  monthlyListeners: number
+  bio: string | null
+  color: string
+  monthly_listeners: number
   verified: boolean
+  cover_url: string | null
 }
 
 export interface Album {
-  id: string
+  id: number
   title: string
-  artistId: string
+  artist_id: number
+  artist: Artist
   year: number
-  gradient: [string, string]
+  color: string
   type: 'album' | 'ep' | 'single'
+  cover_url: string | null
 }
 
 export interface Track {
-  id: string
+  id: number
   title: string
-  albumId: string
-  artistId: string
+  album_id: number
+  artist_id: number
+  album: Album
+  artist: Artist
   duration: number
   plays: number
-  audioSrc?: string
-  coverSrc?: string
+  audio_url: string
+  cover_url: string | null
 }
 
 export interface Playlist {
-  id: string
+  id: number
   title: string
-  description: string
-  gradient: [string, string]
-  trackIds: string[]
-  createdBy: string
+  description: string | null
+  color: string
+  cover_url: string | null
+  tracks?: Track[]
+  track_count?: number
 }
 
 export interface Genre {
   id: string
   name: string
-  gradient: [string, string]
+  color: string
+}
+
+export interface AuthUser {
+  id: number
+  email: string
+  username: string
+  is_admin: boolean
 }

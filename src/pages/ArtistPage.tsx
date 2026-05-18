@@ -1,11 +1,13 @@
 import { useParams } from 'react-router-dom'
-import { Play, Pause, BadgeCheck, UserPlus } from 'lucide-react'
-import { GradientCover } from '@/components/ui/GradientCover'
+import { Play, Pause, BadgeCheck } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { Cover } from '@/components/ui/Cover'
 import { TrackRow } from '@/components/ui/TrackRow'
 import { AlbumCard } from '@/components/ui/AlbumCard'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { usePlayerStore } from '@/store/playerStore'
-import { getArtistById, getArtistAlbums, tracks, formatPlays } from '@/data/mockData'
+import { artistsApi } from '@/api'
+import { formatPlays } from '@/utils'
 
 export function ArtistPage() {
   const { id } = useParams<{ id: string }>()
@@ -14,101 +16,108 @@ export function ArtistPage() {
   const isPlaying = usePlayerStore(s => s.isPlaying)
   const togglePlay = usePlayerStore(s => s.togglePlay)
 
-  const artist = id ? getArtistById(id) : null
-  if (!artist) return (
-    <div className="flex items-center justify-center h-full text-text-secondary">
-      Артист не найден
+  const artistId = parseInt(id ?? '0')
+
+  const { data: artist, isLoading } = useQuery({
+    queryKey: ['artist', artistId],
+    queryFn: () => artistsApi.get(artistId).then(r => r.data),
+    enabled: !!artistId,
+  })
+  const { data: artistAlbums = [] } = useQuery({
+    queryKey: ['artist-albums', artistId],
+    queryFn: () => artistsApi.albums(artistId).then(r => r.data),
+    enabled: !!artistId,
+  })
+  const { data: artistTracks = [] } = useQuery({
+    queryKey: ['artist-tracks', artistId],
+    queryFn: () => artistsApi.tracks(artistId).then(r => r.data),
+    enabled: !!artistId,
+  })
+
+  if (isLoading) return (
+    <div className="flex items-center justify-center h-48">
+      <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
     </div>
   )
+  if (!artist) return (
+    <div className="flex items-center justify-center h-48 text-text-secondary">Артист не найден</div>
+  )
 
-  const artistAlbums = getArtistAlbums(artist.id)
-  const artistTracks = tracks.filter(t => t.artistId === artist.id)
-    .sort((a, b) => b.plays - a.plays)
-    .slice(0, 5)
-
-  const isArtistPlaying = artistTracks.some(t => t.id === currentTrack?.id) && isPlaying
+  const topTracks = [...artistTracks].sort((a, b) => b.plays - a.plays).slice(0, 5)
+  const isArtistPlaying = topTracks.some(t => t.id === currentTrack?.id) && isPlaying
 
   function handlePlay() {
-    if (isArtistPlaying) {
-      togglePlay()
-    } else if (artistTracks.length > 0) {
-      playTrack(artistTracks[0], artistTracks)
-    }
+    if (isArtistPlaying) togglePlay()
+    else if (topTracks.length > 0) playTrack(topTracks[0], topTracks)
   }
 
   return (
     <div className="animate-fade-in-up">
-      {/* Artist header */}
       <div
-        className="relative h-72 overflow-hidden"
-        style={{ background: `linear-gradient(160deg, ${artist.gradient[0]}, ${artist.gradient[1]})` }}
+        className="relative h-64 overflow-hidden"
+        style={{ background: `linear-gradient(160deg, ${artist.color}cc, ${artist.color}44, #0a0a0a)` }}
       >
-        {/* Noise overlay */}
-        <div className="absolute inset-0 opacity-20"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
-          }}
-        />
         <div className="absolute inset-0 bg-gradient-to-t from-bg-base via-transparent to-transparent" />
-
-        <div className="absolute inset-0 flex items-end px-8 pb-8">
-          <div className="flex items-end gap-6">
-            <GradientCover gradient={artist.gradient} size="xl" rounded="full"
-              className="ring-4 ring-white/10 shadow-2xl" />
+        <div className="absolute inset-0 flex items-end px-8 pb-7">
+          <div className="flex items-end gap-5">
+            <Cover
+              src={artist.cover_url}
+              color={artist.color}
+              className="w-28 h-28 flex-shrink-0 shadow-2xl ring-2 ring-white/10"
+              rounded="full"
+              alt={artist.name}
+            />
             <div>
               {artist.verified && (
-                <div className="flex items-center gap-1.5 mb-2">
-                  <BadgeCheck className="w-4 h-4 text-sky-accent fill-sky-accent" />
-                  <span className="text-xs font-semibold text-sky-accent uppercase tracking-wider">Верифицирован</span>
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <BadgeCheck className="w-3.5 h-3.5 text-accent fill-accent" />
+                  <span className="text-xs font-semibold text-accent uppercase tracking-wider">Верифицирован</span>
                 </div>
               )}
-              <h1 className="text-5xl font-extrabold text-white leading-none">{artist.name}</h1>
-              <p className="text-white/70 text-sm mt-2">{artist.bio}</p>
-              <p className="text-white/50 text-xs mt-1">{formatPlays(artist.monthlyListeners)} слушателей в месяц</p>
+              <h1 className="text-4xl font-extrabold text-white leading-none">{artist.name}</h1>
+              {artist.bio && <p className="text-white/60 text-sm mt-1.5 max-w-md line-clamp-2">{artist.bio}</p>}
+              <p className="text-white/40 text-xs mt-1">{formatPlays(artist.monthly_listeners)} слушателей в месяц</p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center gap-3 px-8 py-6">
+      <div className="flex items-center gap-3 px-8 py-5">
         <button
           onClick={handlePlay}
-          className="w-14 h-14 rounded-full flex items-center justify-center shadow-xl transition-all hover:scale-105 glow-accent"
-          style={{ background: 'linear-gradient(135deg, #7c3aed, #06b6d4)' }}
+          disabled={topTracks.length === 0}
+          className="w-11 h-11 rounded-full bg-accent hover:bg-accent/90 flex items-center justify-center shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-40"
         >
           {isArtistPlaying
-            ? <Pause className="w-6 h-6 text-white fill-white" />
-            : <Play className="w-6 h-6 text-white fill-white ml-0.5" />
+            ? <Pause className="w-5 h-5 text-white fill-white" />
+            : <Play className="w-5 h-5 text-white fill-white ml-0.5" />
           }
         </button>
-        <button className="flex items-center gap-2 px-5 py-2.5 rounded-full border border-white/20 text-sm font-medium text-text-secondary hover:text-white hover:border-white/40 transition-all">
-          <UserPlus className="w-4 h-4" />
-          Подписаться
-        </button>
       </div>
 
-      {/* Popular tracks */}
-      <div className="px-8 mb-8">
-        <SectionHeader title="Популярные треки" />
-        <div className="space-y-0.5">
-          {artistTracks.map((track, i) => (
-            <TrackRow key={track.id} track={track} index={i} queue={artistTracks} showAlbum showPlays />
-          ))}
+      {topTracks.length > 0 && (
+        <div className="px-8 mb-8">
+          <SectionHeader title="Популярные треки" />
+          <div className="space-y-0.5">
+            {topTracks.map((track, i) => (
+              <TrackRow key={track.id} track={track} index={i} queue={topTracks} showPlays />
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Albums */}
-      <div className="px-8 pb-8">
-        <SectionHeader title="Дискография" />
-        <div className="flex gap-2 overflow-x-auto pb-2">
-          {artistAlbums.map(al => (
-            <div key={al.id} className="flex-shrink-0">
-              <AlbumCard album={al} />
-            </div>
-          ))}
+      {artistAlbums.length > 0 && (
+        <div className="px-8 pb-8">
+          <SectionHeader title="Дискография" />
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            {artistAlbums.map(al => (
+              <div key={al.id} className="flex-shrink-0">
+                <AlbumCard album={al} tracks={artistTracks.filter(t => t.album_id === al.id)} />
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

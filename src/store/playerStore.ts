@@ -1,9 +1,10 @@
 import { create } from 'zustand'
 import type { Track } from '@/types'
+import { tracksApi } from '@/api'
 
 const audioEl = typeof window !== 'undefined' ? new Audio() : null
 
-function loadFavorites(): string[] {
+function loadFavorites(): number[] {
   try {
     return JSON.parse(localStorage.getItem('aura_favorites') ?? '[]')
   } catch {
@@ -19,7 +20,7 @@ interface PlayerState {
   progress: number
   isShuffle: boolean
   repeatMode: 'off' | 'all' | 'one'
-  favorites: string[]
+  favorites: number[]
 }
 
 interface PlayerActions {
@@ -31,8 +32,9 @@ interface PlayerActions {
   prevTrack: () => void
   toggleShuffle: () => void
   cycleRepeat: () => void
-  toggleFavorite: (trackId: string) => void
-  isFavorite: (trackId: string) => boolean
+  toggleFavorite: (trackId: number) => void
+  isFavorite: (trackId: number) => boolean
+  syncFavorites: (ids: number[]) => void
 }
 
 export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => {
@@ -78,31 +80,26 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       const { currentTrack, isPlaying } = get()
 
       if (currentTrack?.id === track.id) {
-        if (audioEl && track.audioSrc) {
+        if (audioEl) {
           if (isPlaying) { audioEl.pause(); set({ isPlaying: false }) }
           else { audioEl.play().catch(() => {}); set({ isPlaying: true }) }
         }
         return
       }
 
-      if (audioEl && track.audioSrc) {
-        audioEl.src = track.audioSrc
+      if (audioEl) {
+        audioEl.src = track.audio_url
         audioEl.currentTime = 0
         audioEl.play().catch(() => {})
       }
 
-      set({
-        currentTrack: track,
-        queue: queue ?? [track],
-        isPlaying: !!track.audioSrc,
-        progress: 0,
-      })
+      set({ currentTrack: track, queue: queue ?? [track], isPlaying: true, progress: 0 })
     },
 
     togglePlay: () => {
       const { isPlaying, currentTrack } = get()
       if (!currentTrack) return
-      if (audioEl && currentTrack.audioSrc) {
+      if (audioEl) {
         if (isPlaying) audioEl.pause()
         else audioEl.play().catch(() => {})
       }
@@ -127,23 +124,16 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
       const { queue, currentTrack, isShuffle } = get()
       if (!currentTrack || queue.length === 0) return
       const idx = queue.findIndex(t => t.id === currentTrack.id)
-      let next: Track | undefined
-      if (isShuffle) {
-        const others = queue.filter(t => t.id !== currentTrack.id)
-        next = others[Math.floor(Math.random() * others.length)]
-      } else {
-        next = queue[(idx + 1) % queue.length]
-      }
+      const next = isShuffle
+        ? queue[Math.floor(Math.random() * queue.length)]
+        : queue[(idx + 1) % queue.length]
       if (next) get().playTrack(next, queue)
     },
 
     prevTrack: () => {
       const { queue, currentTrack, progress } = get()
       if (!currentTrack || queue.length === 0) return
-      if (progress > 0.05) {
-        get().setProgress(0)
-        return
-      }
+      if (progress > 0.05) { get().setProgress(0); return }
       const idx = queue.findIndex(t => t.id === currentTrack.id)
       const prev = queue[(idx - 1 + queue.length) % queue.length]
       if (prev) get().playTrack(prev, queue)
@@ -153,19 +143,25 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set, get) => 
 
     cycleRepeat: () =>
       set(s => ({
-        repeatMode:
-          s.repeatMode === 'off' ? 'all' : s.repeatMode === 'all' ? 'one' : 'off',
+        repeatMode: s.repeatMode === 'off' ? 'all' : s.repeatMode === 'all' ? 'one' : 'off',
       })),
 
-    toggleFavorite: (trackId) => {
+    toggleFavorite: async (trackId) => {
       const { favorites } = get()
       const next = favorites.includes(trackId)
         ? favorites.filter(id => id !== trackId)
         : [...favorites, trackId]
       localStorage.setItem('aura_favorites', JSON.stringify(next))
       set({ favorites: next })
+      // sync with backend (fire and forget)
+      tracksApi.toggleFavorite(trackId).catch(() => {})
     },
 
     isFavorite: (trackId) => get().favorites.includes(trackId),
+
+    syncFavorites: (ids) => {
+      localStorage.setItem('aura_favorites', JSON.stringify(ids))
+      set({ favorites: ids })
+    },
   }
 })

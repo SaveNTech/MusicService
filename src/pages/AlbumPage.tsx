@@ -1,14 +1,13 @@
 import { useParams, useNavigate } from 'react-router-dom'
-import { Play, Pause, Heart, MoreHorizontal, Clock } from 'lucide-react'
-import { TrackCover } from '@/components/ui/TrackCover'
+import { Play, Pause, Clock } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { Cover } from '@/components/ui/Cover'
 import { TrackRow } from '@/components/ui/TrackRow'
 import { AlbumCard } from '@/components/ui/AlbumCard'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { usePlayerStore } from '@/store/playerStore'
-import {
-  getAlbumById, getAlbumTracks, getArtistById,
-  getArtistAlbums, formatDuration,
-} from '@/data/mockData'
+import { albumsApi, artistsApi } from '@/api'
+import { formatDuration } from '@/utils'
 
 export function AlbumPage() {
   const { id } = useParams<{ id: string }>()
@@ -18,88 +17,95 @@ export function AlbumPage() {
   const isPlaying = usePlayerStore(s => s.isPlaying)
   const togglePlay = usePlayerStore(s => s.togglePlay)
 
-  const album = id ? getAlbumById(id) : null
+  const albumId = parseInt(id ?? '0')
+
+  const { data: album, isLoading: albumLoading } = useQuery({
+    queryKey: ['album', albumId],
+    queryFn: () => albumsApi.get(albumId).then(r => r.data),
+    enabled: !!albumId,
+  })
+  const { data: albumTracks = [] } = useQuery({
+    queryKey: ['album-tracks', albumId],
+    queryFn: () => albumsApi.tracks(albumId).then(r => r.data),
+    enabled: !!albumId,
+  })
+  const { data: artistAlbums = [] } = useQuery({
+    queryKey: ['artist-albums', album?.artist_id],
+    queryFn: () => artistsApi.albums(album!.artist_id).then(r => r.data),
+    enabled: !!album?.artist_id,
+  })
+
+  if (albumLoading) return (
+    <div className="flex items-center justify-center h-48">
+      <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
   if (!album) return (
-    <div className="flex items-center justify-center h-full text-text-secondary">Альбом не найден</div>
+    <div className="flex items-center justify-center h-48 text-text-secondary">Альбом не найден</div>
   )
 
-  const albumTracks = getAlbumTracks(album.id)
-  const artist = getArtistById(album.artistId)
   const isAlbumPlaying = albumTracks.some(t => t.id === currentTrack?.id) && isPlaying
   const totalDuration = albumTracks.reduce((s, t) => s + t.duration, 0)
-  const relatedAlbums = artist ? getArtistAlbums(artist.id).filter(a => a.id !== album.id) : []
-  const firstCover = albumTracks.find(t => t.coverSrc)?.coverSrc
+  const relatedAlbums = artistAlbums.filter(a => a.id !== album.id)
 
   function handlePlayAlbum() {
     if (isAlbumPlaying) togglePlay()
     else if (albumTracks.length > 0) playTrack(albumTracks[0], albumTracks)
   }
 
+  const typeLabel = album.type === 'ep' ? 'EP' : album.type === 'single' ? 'Сингл' : 'Альбом'
+
   return (
     <div className="animate-fade-in-up">
-      {/* Header */}
       <div
-        className="relative px-8 pt-10 pb-8"
-        style={{ background: `linear-gradient(160deg, ${album.gradient[0]}33, ${album.gradient[1]}22, transparent 60%)` }}
+        className="relative px-8 pt-8 pb-7"
+        style={{ background: `linear-gradient(160deg, ${album.color}30, ${album.color}10, transparent 65%)` }}
       >
-        <div className="flex items-end gap-7">
-          <div
-            className="flex-shrink-0 w-48 h-48 rounded-2xl overflow-hidden shadow-2xl"
-            style={{ boxShadow: `0 24px 60px ${album.gradient[0]}50` }}
-          >
-            <TrackCover
-              coverSrc={firstCover}
-              gradient={album.gradient}
-              className="w-full h-full"
-              alt={album.title}
-            />
-          </div>
-          <div className="flex-1 min-w-0 pb-2">
-            <p className="text-xs font-semibold uppercase tracking-widest text-text-secondary mb-1">
-              {album.type === 'ep' ? 'EP' : album.type === 'single' ? 'Сингл' : 'Альбом'}
-            </p>
-            <h1 className="text-4xl lg:text-5xl font-extrabold text-white leading-tight mb-3 truncate">
+        <div className="flex items-end gap-6">
+          <Cover
+            src={album.cover_url}
+            color={album.color}
+            className="w-44 h-44 flex-shrink-0 shadow-2xl"
+            rounded="md"
+            alt={album.title}
+          />
+          <div className="flex-1 min-w-0 pb-1">
+            <p className="text-xs font-semibold uppercase tracking-widest text-text-secondary mb-1">{typeLabel}</p>
+            <h1 className="text-3xl lg:text-4xl font-extrabold text-white leading-tight mb-2 truncate">
               {album.title}
             </h1>
             <button
-              onClick={() => navigate(`/artist/${album.artistId}`)}
-              className="text-base font-semibold text-text-primary hover:text-white transition-colors"
+              onClick={() => navigate(`/artist/${album.artist_id}`)}
+              className="text-sm font-semibold text-text-primary hover:text-white transition-colors"
             >
-              {artist?.name}
+              {album.artist.name}
             </button>
-            <p className="text-sm text-text-secondary mt-1">
-              {album.year} · {albumTracks.length} {albumTracks.length === 1 ? 'трек' : 'треков'}
-              {totalDuration > 0 ? ` · ${formatDuration(totalDuration)}` : ''}
+            <p className="text-xs text-text-secondary mt-1">
+              {album.year} · {albumTracks.length} треков
+              {totalDuration > 0 && ` · ${formatDuration(totalDuration)}`}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 mt-6">
+        <div className="flex items-center gap-3 mt-5">
           <button
             onClick={handlePlayAlbum}
-            className="w-14 h-14 rounded-full flex items-center justify-center shadow-xl transition-all hover:scale-105 active:scale-95 glow-accent"
-            style={{ background: 'linear-gradient(135deg, #7c3aed, #06b6d4)' }}
+            disabled={albumTracks.length === 0}
+            className="w-11 h-11 rounded-full bg-accent hover:bg-accent/90 flex items-center justify-center shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-40"
           >
             {isAlbumPlaying
-              ? <Pause className="w-6 h-6 text-white fill-white" />
-              : <Play className="w-6 h-6 text-white fill-white ml-0.5" />
+              ? <Pause className="w-5 h-5 text-white fill-white" />
+              : <Play className="w-5 h-5 text-white fill-white ml-0.5" />
             }
-          </button>
-          <button className="w-10 h-10 rounded-full border border-white/20 flex items-center justify-center text-text-secondary hover:text-white hover:border-white/40 transition-all">
-            <Heart className="w-4 h-4" />
-          </button>
-          <button className="w-10 h-10 rounded-full border border-white/20 flex items-center justify-center text-text-secondary hover:text-white hover:border-white/40 transition-all">
-            <MoreHorizontal className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* Track list */}
       <div className="px-8 pb-6">
-        <div className="flex items-center gap-3 px-3 pb-3 border-b border-white/5 mb-2">
+        <div className="flex items-center gap-3 px-3 pb-2 border-b border-border mb-1">
           <div className="w-6 text-center text-xs text-text-muted">#</div>
           <div className="flex-1 text-xs font-semibold text-text-muted uppercase tracking-wider">Название</div>
-          <div className="hidden lg:block text-xs font-semibold text-text-muted uppercase tracking-wider w-16 text-right">Слушали</div>
+          <div className="hidden lg:block text-xs font-semibold text-text-muted uppercase tracking-wider w-14 text-right">Слушали</div>
           <div className="w-8" />
           <div className="w-8 text-right flex-shrink-0">
             <Clock className="w-3.5 h-3.5 text-text-muted ml-auto" />
@@ -115,7 +121,7 @@ export function AlbumPage() {
 
       {relatedAlbums.length > 0 && (
         <div className="px-8 pb-8">
-          <SectionHeader title={`Ещё от ${artist?.name}`} />
+          <SectionHeader title={`Ещё от ${album.artist.name}`} />
           <div className="flex gap-2 overflow-x-auto pb-2">
             {relatedAlbums.map(a => (
               <div key={a.id} className="flex-shrink-0">
